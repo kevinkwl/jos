@@ -1,0 +1,188 @@
+#+TITLE: Lab 1: Booting a PC
+#+SUBTITLE: notes and answers
+#+Author: Kangwei Ling
+
+* Part 1: PC Bootstrap
+* Part 2: The Boot Loader
+  + *At what point does the processor start executing 32-bit code? What exactly*
+    *causes the switch from 16- to 32-bit mode?* 
+
+    The instruction =ljmp    $PROT_MODE_CSEG, $protcseg= does the job. After
+    this instruction, the processor start executing 32-bit code. This jump
+    clears the processor pre-fetch queue (with 16bit code) start executing code
+    specified with 32-bit code.
+
+  + What is the last instruction of the boot loader executed, and what is the
+    first instruction of the kernel it just loaded? 
+
+    The last instruction of the boot loader executed is
+    #+BEGIN_SRC asm
+    call *0x10018
+    #+END_SRC
+    The first instruction of the kernel just loads is
+    #+BEGIN_SRC asm
+    movw   $0x1234,0x472
+    #+END_SRC
+
+  + Where is the first instruction of the kernel?
+    
+    =0x1000c=
+
+  + How does the boot loader decide how many sectors it must read in order to
+    fetch the entire kernel from disk? Where does it find this information? 
+
+    The number of program segments is in the elf header. As sector 1 which
+    contains the elf header is loaded at first, we can get the information. And
+    for each program segment, the program header contains enough information about the
+    offset, total size of the segment.
+** Loading the Kernel
+   - *Exercise 5*
+     
+     =lgdt    gdtdesc= would go wrong if the link address of the
+     bootloader is changed. And the program actually stops when executing the
+     long jump instruction =ljmp    $PROT_MODE_CSEG, $protcseg=, because this
+     long jump's address are totally wrong which is based on the link address,
+     different from the real loaded address.
+
+     absolute jump and access the global data engender errors due to the
+     incorrection of the address.
+
+   - *Exercise 6*
+
+     At the point the BIOS enters the boot loader, the 8 words are all 0. At
+     the point the boot loader enters the kernel, the 8 words are filled with
+     code of the kernel, which is just loaded from disk.
+
+     
+* Part 3: The Kernel
+** Using virtual memory to work around position dependence
+   - *Exercise 7*
+
+     After =movl %eax, %cr0=, the content resides at 0x00100000 and at
+     0xf0100000 is identical, the mapping works.
+
+     The following instruction will fail if the mapping weren't in place
+     #+BEGIN_SRC asm
+     mov    $relocated, %eax
+     jmp    *%eax   # fail to work properly
+     #+END_SRC
+     The address of $relocated is not been mapped, thus jumping to the place
+     where kernel doesn't show up.
+** Formatted Printing to the Console
+   1. The *console.c* file exports =cputchar= for use in *printf.c*. In *printf.c*,
+      this =cputchar= is used in =putch= function, which call =cputchar= and update
+      a count variable. Again, =putch= is passed to =vprintfmt= in *printfmt.c* in
+      a higher level abstraction =vcprintf=. And finally to print something, we
+      call the =cprintf= function to utilize the variable-length argument list on
+      =vcprintf=. The actual call of =putch= is in =printfmt.c=. 
+
+      The *printf.c* file acts as a bridge between low level communication with
+      hardware (*console.c*) and high level format print utility (*printfmt.c*).
+
+   2. The following code from console.c:
+      #+BEGIN_SRC c
+	// What is the purpose of this?
+	if (crt_pos >= CRT_SIZE) {
+		int i;
+
+		memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
+		for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
+			crt_buf[i] = 0x0700 | ' ';
+		crt_pos -= CRT_COLS;
+	}   
+      #+END_SRC
+      runs under the occasion that the screen has been filled (rows x cols, buffer full), new
+      space is needed to continue write. Thus this code copy the data after the
+      first row to override previous buffer, which remove the first line.
+      Graphically, the text console is moved up 1 line.
+
+   3. 
+
+      #+BEGIN_SRC c
+      int x = 1, y = 3, z = 4;
+      cprintf("x %d, y %x, z %d\n", x, y, z);
+      #+END_SRC
+      + In the call to cprintf(), =fmt= points to the string 
+        "=x %d, y %x, z %d\n=". After =va_start=, =ap= is pointing to the
+        argument =x= on stack.
+
+      + The calling sequence is listed below:
+	#+BEGIN_SRC c
+	cprintf("x %d, y %x, z %d\n", x, y, z)
+	|
+	vcprintf("x %d, y %x, z %d\n", ap)
+	|
+	vprintfmt((void*)putch, &cnt, fmt, ap)
+	|
+	---- cons_putc('x')
+	---- cons_putc(' ')
+	---- va_arg(*ap, int)    // before: [x,y,z] , after: [y,z] (on stack)
+	  -- cons_putc('1')
+	---- cons_putc(',')
+	---- cons_putc(' ')
+	---- cons_putc('y')
+	---- cons_putc(' ')
+	---- va_arg(*ap, int)    // before: [y,z] , after: [z]
+	  -- cons_putc('3')
+	---- cons_putc(',')
+	---- cons_putc(' ')
+	---- cons_putc('z')
+	---- cons_putc(' ')
+	---- va_arg(*ap, int)    // before: [z] , after: 
+	  -- cons_putc('4')
+	#+END_SRC
+
+      + For the following code:
+	#+BEGIN_SRC c
+	unsigned int i = 0x00646c72;
+	cprintf("H%x Wo%s", 57616, &i);
+	#+END_SRC
+	it will print =HE110 World=.
+
+	The hexadecimal form of 57616 is =E110=. The ascii code for 'r' is
+        =0x72=, 'l' =0x6c=, 'd' =0x64=. Interpret the integer =0x00646c72= as a
+        string, the result would be 0x72, 0x6c, 0x64, \0 in little endian.
+	
+	If big-endian is used, reverse i by bytes (i = 0x726c6400). 57616 stays
+        unchanged.
+
+      + for
+	#+BEGIN_SRC c
+	cprintf("x=%d y=%d", 3);
+	#+END_SRC
+	Random error will occur. Or the value after 'y=' is a value from stack
+        that doesn't belong the frame of current function.
+
+      + If GCC changed its calling convention so that it pushed arguments on
+        the stack in declaration order, so that the last argument is pushed
+        last, then we need to change the implementation for =va_arg=.
+
+
+
+** The Stack
+   + *Exercise 9*
+
+     The kernel initialize its stack in *entry.S*, the stack is reserved as a
+     chunk of global data space, the stack pointer is initialized to the higher
+     address end.
+     #+BEGIN_SRC asm
+.data
+###################################################################
+# boot stack
+###################################################################
+	.p2align	PGSHIFT		# force page alignment
+	.globl		bootstack
+bootstack:
+	.space		KSTKSIZE
+	.globl		bootstacktop   
+bootstacktop:     
+     #+END_SRC
+
+   + *Exercise 10*
+
+     Set a breakpoint at =0xf0100040=.
+
+     Between each call to =test_backtrace=, the =%esp= differs by 32 bytes.
+     The contents are: return address,saved %ebp, saved %ebx,
+     reserved local space(16 bytes), argument x.
+
