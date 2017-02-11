@@ -8,6 +8,9 @@
 #include <inc/stdarg.h>
 #include <inc/error.h>
 
+// extern color variable
+extern enum COLOR foreground_color;
+extern enum COLOR background_color;
 /*
  * Space or zero padding and a field width are supported for the numeric
  * formats only.
@@ -60,6 +63,13 @@ getuint(va_list *ap, int lflag)
 		return va_arg(*ap, unsigned long);
 	else
 		return va_arg(*ap, unsigned int);
+}
+
+// Get a color enum
+static enum COLOR
+getcolor(va_list *ap)
+{
+	return va_arg(*ap, enum COLOR);
 }
 
 // Same as getuint but signed - can't use getuint
@@ -232,6 +242,14 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 			putch(ch, putdat);
 			break;
 
+		// forground color change
+		case 'F':
+			foreground_color = getcolor(&ap);
+			break;
+		// background color change
+		case 'B':
+			background_color = getcolor(&ap);
+			break;
 		// unrecognized escape sequence - just print it literally
 		default:
 			putch('%', putdat);

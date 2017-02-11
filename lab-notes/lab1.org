@@ -132,7 +132,7 @@
 	  -- cons_putc('4')
 	#+END_SRC
 
-      + For the following code:
+   4. For the following code:
 	#+BEGIN_SRC c
 	unsigned int i = 0x00646c72;
 	cprintf("H%x Wo%s", 57616, &i);
@@ -146,18 +146,74 @@
 	If big-endian is used, reverse i by bytes (i = 0x726c6400). 57616 stays
         unchanged.
 
-      + for
+   5. for
 	#+BEGIN_SRC c
 	cprintf("x=%d y=%d", 3);
 	#+END_SRC
 	Random error will occur. Or the value after 'y=' is a value from stack
         that doesn't belong the frame of current function.
 
-      + If GCC changed its calling convention so that it pushed arguments on
+   6. If GCC changed its calling convention so that it pushed arguments on
         the stack in declaration order, so that the last argument is pushed
         last, then we need to change the implementation for =va_arg=.
 
+   7. *Challenge*
 
+      In =cga_putc=, the higher 8 bits is used to embed print attributes:
+      background color and foreground color. I just need to put correct number
+      into these bits.
+
+      The 16 color palette is used
+
+      #+ATTR_LATEX: :width .4\textwidth
+      [[file:img/color.png]]
+
+      For convenience, in *stdio.h*
+      #+BEGIN_SRC c
+// colors
+enum COLOR { c_black = 0, c_blue, c_green, c_cyan, c_red, c_magenta, c_brown,
+			 c_lgray, c_gray, c_lblue, c_lgreen, c_lcyan, c_lred, c_lmagenta,
+			 c_yellow, c_white};      
+      #+END_SRC
+			 
+      The color variables are defined in *printf.c*, where the color is embedded
+      into *putch*'s ch.
+      #+BEGIN_SRC c
+enum COLOR foreground_color = c_lgray;
+enum COLOR background_color = c_black;
+static void
+putch(int ch, int *cnt)
+{
+	ch &= 0xff;
+	ch |= background_color << 12;
+	ch |= foreground_color << 8;
+	cputchar(ch);
+	*cnt++;
+}      
+      #+END_SRC
+
+      To change the color, I use =%F= for foreground color and =%B= for
+      background color, these changes are made in *printfmt.c*
+      #+BEGIN_SRC c
+		// forground color change
+		case 'F':
+			foreground_color = getcolor(&ap);
+			break;
+		// background color change
+		case 'B':
+			background_color = getcolor(&ap);
+			break;      
+      #+END_SRC
+
+      As an example
+      #+BEGIN_SRC c
+      cprintf("%F%B6828 %F%Bdecimal is %F%o %Foctal!\n", c_red, c_gray,
+              c_green, c_black, c_cyan, 6828, c_lgray);
+      #+END_SRC
+      will have the following effect
+
+      #+ATTR_LATEX: :width .5\textwidth
+      [[file:img/effect.png]]
 
 ** The Stack
    + *Exercise 9*

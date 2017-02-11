@@ -5,10 +5,14 @@
 #include <inc/stdio.h>
 #include <inc/stdarg.h>
 
-
+enum COLOR foreground_color = c_lgray;
+enum COLOR background_color = c_black;
 static void
 putch(int ch, int *cnt)
 {
+	ch &= 0xff;
+	ch |= background_color << 12;
+	ch |= foreground_color << 8;
 	cputchar(ch);
 	*cnt++;
 }

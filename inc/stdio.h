@@ -30,4 +30,10 @@ int	vfprintf(int fd, const char *fmt, va_list);
 // lib/readline.c
 char*	readline(const char *prompt);
 
+// colors
+enum COLOR { c_black = 0, c_blue, c_green, c_cyan, c_red, c_magenta, c_brown,
+			 c_lgray, c_gray, c_lblue, c_lgreen, c_lcyan, c_lred, c_lmagenta,
+			 c_yellow, c_white};
+
+
 #endif /* !JOS_INC_STDIO_H */
