@@ -367,12 +367,23 @@ page_decref(struct PageInfo* pp)
 pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
-	// Fill this function in
-	return NULL;
+	pde_t *pde = pgdir + PDX(va);
+
+	if (!(*pde & PTE_P)) {
+		if (!create)
+			return NULL;
+		struct PageInfo *page = page_alloc(ALLOC_ZERO);
+		if (!page)
+			return NULL;
+		*pde = page2pa(page) | PTE_P | PTE_W | PTE_U;
+		++page->pp_ref;
+	}
+	physaddr_t pgtable = PTE_ADDR(*pde);
+	return (pte_t *)KADDR(pgtable) + PTX(va);
 }
 
 //
-// Map [va, va+size) of virtual address space to physical [pa, pa+size)
+// Map [va, va+size) of virp tual address space to physical [pa, pa+size)
 // in the page table rooted at pgdir.  Size is a multiple of PGSIZE, and
 // va and pa are both page-aligned.
 // Use permission bits perm|PTE_P for the entries.
@@ -385,7 +396,13 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
-	// Fill this function in
+	ROUNDUP(size, PGSIZE);
+	for (int i = 0; i < size / PGSIZE; i++, va += PGSIZE, pa += PGSIZE) {
+		pte_t *pte = pgdir_walk(pgdir, (const void *)va, 1);
+		if (!pte)
+			return;
+		*pte = pa | perm | PTE_P;
+	}
 }
 
 //
@@ -416,7 +433,18 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
-	// Fill this function in
+	int invalidate_tlb = 0;
+	pte_t *pte = pgdir_walk(pgdir, va, 1);
+	if (pte == NULL)
+		return -E_NO_MEM;
+	++pp->pp_ref; // corner-case
+	if (*pte & PTE_P) {
+		page_remove(pgdir, va);
+		invalidate_tlb = 1;
+	}
+	*pte = page2pa(pp) | perm | PTE_P;
+	if (invalidate_tlb)
+		tlb_invalidate(pgdir, va);
 	return 0;
 }
 
@@ -434,7 +462,12 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
-	// Fill this function in
+	pte_t *pte = pgdir_walk(pgdir, va, 1);
+	if (pte != NULL && (*pte & PTE_P)) {
+		if (pte_store)
+			*pte_store = pte;
+		return pa2page(PTE_ADDR(*pte));
+	}
 	return NULL;
 }
 
@@ -456,7 +489,13 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 void
 page_remove(pde_t *pgdir, void *va)
 {
-	// Fill this function in
+	pte_t *pte_store;
+	struct PageInfo *page_info = page_lookup(pgdir, va, &pte_store);
+	if (page_info == NULL)
+		return;
+	page_decref(page_info);
+	*pte_store = 0;
+	tlb_invalidate(pgdir, va);
 }
 
 //
