@@ -396,7 +396,8 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
-	ROUNDUP(size, PGSIZE);
+	size = ROUNDUP(size, PGSIZE);
+	cprintf("map region va: 0x%08x to pa: 0x%08x , size : 0x%08x\n", va, pa, size);
 	for (int i = 0; i < size / PGSIZE; i++, va += PGSIZE, pa += PGSIZE) {
 		pte_t *pte = pgdir_walk(pgdir, (const void *)va, 1);
 		if (!pte)
