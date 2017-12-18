@@ -510,7 +510,7 @@ env_run(struct Env *e)
 	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
 		curenv->env_type = ENV_RUNNABLE;
 	curenv = e;
-	curenv->env_type = ENV_RUNNING;
+	curenv->env_status = ENV_RUNNING;
 	curenv->env_runs++;
 	lcr3(PADDR(curenv->env_pgdir));
 	env_pop_tf(&(curenv->env_tf));

@@ -88,6 +88,11 @@ TRAPHANDLER_NOEC(th29, 29)
 TRAPHANDLER_NOEC(th30, 30)
 TRAPHANDLER_NOEC(th31, 31)
 
+// syscall
+.data
+.globl vector_syscall
+vector_syscall:
+TRAPHANDLER_NOEC(th48, 48)
 /*
  * Lab 3: Your code here for _alltraps
  */
