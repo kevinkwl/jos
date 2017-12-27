@@ -267,7 +267,11 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
-
+	for (int i = 0; i < NCPU; i++) {
+		uintptr_t kstacktop_i = KSTACKTOP - i * (KSTKSIZE + KSTKGAP);
+		boot_map_region(kern_pgdir, kstacktop_i - KSTKSIZE, KSTKSIZE,
+				PADDR(percpu_kstacks[i]), PTE_W);
+	}
 }
 
 // --------------------------------------------------------------
@@ -332,6 +336,21 @@ page_init(void)
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
+	}
+
+	// LAB4:
+	struct PageInfo *mpentry_page = &pages[MPENTRY_PADDR/PGSIZE];
+	mpentry_page->pp_ref = 1;
+	if (page_free_list == mpentry_page)
+		page_free_list = mpentry_page->pp_link;
+	else {
+		struct PageInfo *page = page_free_list;
+		while (page && page->pp_link != mpentry_page)
+			page = page->pp_link;
+		if (page->pp_link == mpentry_page) {
+			page->pp_link = mpentry_page->pp_link;
+			mpentry_page->pp_link = NULL;
+		}
 	}
 }
 
@@ -433,7 +452,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 }
 
 //
-// Map [va, va+size) of virp tual address space to physical [pa, pa+size)
+// Map [va, va+size) of virtual address space to physical [pa, pa+size)
 // in the page table rooted at pgdir.  Size is a multiple of PGSIZE, and
 // va and pa are both page-aligned.
 // Use permission bits perm|PTE_P for the entries.
@@ -447,7 +466,7 @@ static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
 	size = ROUNDUP(size, PGSIZE);
-	cprintf("map region va: 0x%08x to pa: 0x%08x , size : 0x%08x\n", va, pa, size);
+	//cprintf("map region va: 0x%08x to pa: 0x%08x , size : 0x%08x\n", va, pa, size);
 	for (int i = 0; i < size / PGSIZE; i++, va += PGSIZE, pa += PGSIZE) {
 		pte_t *pte = pgdir_walk(pgdir, (const void *)va, 1);
 		if (!pte)
@@ -593,7 +612,15 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	size = ROUNDUP(size, PGSIZE);
+	uintptr_t ret_addr = base;
+	if (base + size >= MMIOLIM)
+		panic("mmio map region exceeds MMIOLIM");
+	boot_map_region(kern_pgdir, base, size, pa, PTE_PCD|PTE_PWT|PTE_W);
+	base += size;
+
+	return (void *)ret_addr;
+        //panic("mmio_map_region not implemented");
 }
 
 static uintptr_t user_mem_check_addr;

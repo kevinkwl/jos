@@ -295,7 +295,7 @@ region_alloc(struct Env *e, void *va, size_t len)
 	uintptr_t end_pg = (uintptr_t)ROUNDUP(uint_va + len, PGSIZE);
 	if (start_pg >= UTOP || (uint_va + len < uint_va) || (uint_va + len > UTOP))
 		panic("region alloc failed, out of boundary: va: %p, len: %08x\n", va, len);
-	cprintf("region alloc 0x%08x ~ 0x%08x, va = %p, len = %08x\n", start_pg, end_pg, va, len);
+	//cprintf("region alloc 0x%08x ~ 0x%08x, va = %p, len = %08x\n", start_pg, end_pg, va, len);
 	for (; start_pg < end_pg; start_pg += PGSIZE) {
 		struct PageInfo *page = page_lookup(e->env_pgdir, (void *)start_pg, 0);
 		if (page != NULL)
@@ -534,11 +534,12 @@ env_run(struct Env *e)
 
 	// LAB 3: Your code here.
 	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
-		curenv->env_type = ENV_RUNNABLE;
+		curenv->env_status = ENV_RUNNABLE;
 	curenv = e;
 	curenv->env_status = ENV_RUNNING;
 	curenv->env_runs++;
 	lcr3(PADDR(curenv->env_pgdir));
+	unlock_kernel();
 	env_pop_tf(&(curenv->env_tf));
 	//panic("env_run not yet implemented");
 }
