@@ -25,7 +25,8 @@ pgfault(struct UTrapframe *utf)
 	//   (see <inc/memlayout.h>).
 
 	// LAB 4: Your code here.
-
+	if (!(err & FEC_WR) || !(uvpt[PGNUM(addr)] & PTE_COW))
+		panic("pgfault: not a write or to a copy-on-write page");
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
 	// page to the old page's address.
@@ -33,8 +34,15 @@ pgfault(struct UTrapframe *utf)
 	//   You should make three system calls.
 
 	// LAB 4: Your code here.
-
-	panic("pgfault not implemented");
+	void *pg_addr = ROUNDDOWN(addr, PGSIZE);
+	if ((r = sys_page_alloc(0, (void *)PFTEMP, PTE_U|PTE_W|PTE_P)) < 0)
+		panic("alloc to PFTEMP failed: %e", r);
+	memmove((void *)PFTEMP, pg_addr, PGSIZE);
+	if ((r = sys_page_map(0, (void *)PFTEMP, 0, pg_addr, PTE_U|PTE_W|PTE_P)) < 0)
+		panic("map PFTEMP to fault addr failed: %e", r);
+	if ((r = sys_page_unmap(0, (void *)PFTEMP)) < 0)
+		panic("unmap PFTEMP failed: %e", r);
+	//panic("pgfault not implemented");
 }
 
 //
@@ -54,7 +62,17 @@ duppage(envid_t envid, unsigned pn)
 	int r;
 
 	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	uintptr_t addr = pn * PGSIZE;
+	if (uvpt[pn] & PTE_W || uvpt[pn] & PTE_COW) {
+		if ((r = sys_page_map(0, (void *)addr, envid, (void *)addr, PTE_COW|PTE_U|PTE_P)) < 0)
+			panic("map to child failed: %e", r);
+		if ((r = sys_page_map(0, (void *)addr, 0, (void *)addr, PTE_COW|PTE_U|PTE_P)) < 0)
+			panic("remap to curenv COW failed: %e", r);
+	} else {
+		if ((r = sys_page_map(0, (void *)addr, 0, (void *)addr, PTE_U|PTE_P)) < 0)
+			panic("map to child read-only failed: %e", r);
+	}
+	//panic("duppage not implemented");
 	return 0;
 }
 
@@ -78,7 +96,39 @@ envid_t
 fork(void)
 {
 	// LAB 4: Your code here.
-	panic("fork not implemented");
+	int r;
+	set_pgfault_handler(pgfault);
+
+	envid_t child_envid = sys_exofork();
+	if (child_envid < 0)
+		return child_envid;
+	if (child_envid == 0) {
+		// in child!
+		// fix thisenv
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	}
+
+	for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P))
+			if (duppage(child_envid, PGNUM(addr)) < 0)
+				panic("fork: duppage failed at PGNUM %08x", PGNUM(addr));
+	}
+
+	// alloc mem for child exception
+	if ((r = sys_page_alloc(child_envid, (void *)(UXSTACKTOP - PGSIZE), PTE_W|PTE_U|PTE_P)) < 0)
+		panic("alloc for exception stack failed: %e", r);
+
+	extern void _pgfault_upcall(void);
+	if ((r = sys_env_set_pgfault_upcall(child_envid, _pgfault_upcall)) < 0)
+		panic("set pgfault upcall for child failed: %e", r);
+
+	// Start the child environment running
+	if ((r = sys_env_set_status(child_envid, ENV_RUNNABLE)) < 0)
+		panic("sys_env_set_status: %e", r);
+
+	return child_envid;
+	//panic("fork not implemented");
 }
 
 // Challenge!
