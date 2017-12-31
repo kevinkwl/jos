@@ -77,8 +77,13 @@ trap_init(void)
 	for (int i = 0; i < 32; ++i) {
 		SETGATE(idt[i], 0, GD_KT, vectors[i], 0);
 	}
-	SETGATE(idt[T_BRKPT], 1, GD_KT, vectors[T_BRKPT], 3); // breakpoint
-	SETGATE(idt[T_SYSCALL], 1, GD_KT, vector_syscall, 3); // syscall
+	SETGATE(idt[T_BRKPT], 0, GD_KT, vectors[T_BRKPT], 3); // breakpoint
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, vector_syscall, 3); // syscall
+
+	extern long vectors_IRQ[];
+	for (int i = 0; i < 16; ++i) {
+		SETGATE(idt[IRQ_OFFSET + i], 0, GD_KT, vectors_IRQ[i], 0);
+	}
 	// Per-CPU setup
 	trap_init_percpu();
 }
@@ -212,6 +217,11 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle clock interrupts. Don't forget to acknowledge the
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+		lapic_eoi();
+		sched_yield();
+		return;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -331,7 +341,6 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
-	cprintf("trapped, fault at %x\n", fault_va);
 	if (curenv->env_pgfault_upcall) {
 		size_t utf_len = sizeof(struct UTrapframe);
 		uint32_t reserved = 0;
