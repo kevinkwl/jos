@@ -29,7 +29,18 @@ sched_yield(void)
 	// below to halt the cpu.
 
 	// LAB 4: Your code here.
-
+	int idx = curenv ? ENVX(curenv->env_id) : 0;
+	int cnt = 0;
+	for (; cnt < NENV; cnt++, idx = (idx+1) % NENV) {
+		if (envs[idx].env_status != ENV_RUNNABLE)
+			continue;
+		env_run(&envs[idx]);
+		return;
+	}
+	if (cnt == NENV && curenv && curenv->env_status == ENV_RUNNING){
+		env_run(curenv);
+		return;
+	}
 	// sched_halt never returns
 	sched_halt();
 }
@@ -64,10 +75,8 @@ sched_halt(void)
 	// timer interupts come in, we know we should re-acquire the
 	// big kernel lock
 	xchg(&thiscpu->cpu_status, CPU_HALTED);
-
 	// Release the big kernel lock as if we were "leaving" the kernel
 	unlock_kernel();
-
 	// Reset stack pointer, enable interrupts and then halt.
 	asm volatile (
 		"movl $0, %%ebp\n"
@@ -75,7 +84,7 @@ sched_halt(void)
 		"pushl $0\n"
 		"pushl $0\n"
 		// Uncomment the following line after completing exercise 13
-		//"sti\n"
+		"sti\n"
 		"1:\n"
 		"hlt\n"
 		"jmp 1b\n"
