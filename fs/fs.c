@@ -62,7 +62,15 @@ alloc_block(void)
 	// super->s_nblocks blocks in the disk altogether.
 
 	// LAB 5: Your code here.
-	panic("alloc_block not implemented");
+	uint32_t blockno;
+	for (blockno = 0; blockno < super->s_nblocks; blockno++) {
+		if (block_is_free(blockno)) {
+			bitmap[blockno/32] &= ~(1<<(blockno%32));
+			flush_block(bitmap + blockno/32);
+			return blockno;
+		}
+	}
+	//panic("alloc_block not implemented");
 	return -E_NO_DISK;
 }
 
@@ -112,7 +120,7 @@ fs_init(void)
 	// Set "bitmap" to the beginning of the first bitmap block.
 	bitmap = diskaddr(2);
 	check_bitmap();
-	
+
 }
 
 // Find the disk block number slot for the 'filebno'th block in file 'f'.
@@ -135,7 +143,23 @@ static int
 file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
 {
        // LAB 5: Your code here.
-       panic("file_block_walk not implemented");
+	if (filebno >= NDIRECT + NINDIRECT)
+		return -E_INVAL;
+	
+	if (filebno < NDIRECT)
+		*ppdiskbno = f->f_direct + filebno;
+	
+	if (filebno >= NDIRECT) {
+		filebno -= NDIRECT;
+		if (f->f_indirect == 0 && !alloc)
+			return -E_NOT_FOUND;
+		int blockno = 0;
+		if ((blockno = alloc_block()) < 0)
+			return -E_NO_DISK;
+		f->f_indirect = blockno;
+		*ppdiskbno = diskaddr(blockno) + filebno;
+	}
+	return 0;
 }
 
 // Set *blk to the address in memory where the filebno'th
@@ -149,8 +173,20 @@ file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool all
 int
 file_get_block(struct File *f, uint32_t filebno, char **blk)
 {
-       // LAB 5: Your code here.
-       panic("file_get_block not implemented");
+        // LAB 5: Your code here.
+	    uint32_t *pdiskno;
+	   	int r;
+	   	if ((r = file_block_walk(f, filebno, &pdiskno, 1)) < 0)
+			return r;
+		
+		if (*pdiskno == 0) {
+			if ((r = alloc_block()) < 0)
+				return -E_NO_DISK;
+			*pdiskno = r;
+		}
+		*blk = diskaddr(*pdiskno);
+		return 0;
+       	//panic("file_get_block not implemented");
 }
 
 // Try to find a file named "name" in dir.  If so, set *file to it.
