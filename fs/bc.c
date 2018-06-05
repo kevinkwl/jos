@@ -86,6 +86,10 @@ flush_block(void *addr)
 
 	// LAB 5: Your code here.
 	int r;
+	if (!va_is_mapped(addr) || !va_is_dirty(addr)) {
+		return;
+	}
+
 	addr = ROUNDDOWN(addr, PGSIZE);
 	if ((r = ide_write(blockno * BLKSECTS, addr, BLKSECTS)) < 0) {
 		panic("in flush_block, fail to write disk: %e", r);
