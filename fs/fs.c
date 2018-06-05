@@ -66,7 +66,7 @@ alloc_block(void)
 	for (blockno = 0; blockno < super->s_nblocks; blockno++) {
 		if (block_is_free(blockno)) {
 			bitmap[blockno/32] &= ~(1<<(blockno%32));
-			flush_block(bitmap + blockno/32);
+			flush_block(bitmap);
 			return blockno;
 		}
 	}
@@ -148,16 +148,20 @@ file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool all
 	
 	if (filebno < NDIRECT)
 		*ppdiskbno = f->f_direct + filebno;
-	
-	if (filebno >= NDIRECT) {
+	else if (filebno >= NDIRECT) {
 		filebno -= NDIRECT;
-		if (f->f_indirect == 0 && !alloc)
-			return -E_NOT_FOUND;
-		int blockno = 0;
-		if ((blockno = alloc_block()) < 0)
-			return -E_NO_DISK;
-		f->f_indirect = blockno;
-		*ppdiskbno = diskaddr(blockno) + filebno;
+		if (f->f_indirect == 0) {
+			if (!alloc)
+				return -E_NOT_FOUND;
+			int blockno = 0;
+			if ((blockno = alloc_block()) < 0)
+				return -E_NO_DISK;
+			memset(diskaddr(blockno), 0, BLKSIZE); // reset new block!
+			flush_block(diskaddr(blockno));
+			f->f_indirect = blockno;
+		}
+		// casting to uint32_t* is important! arithmetic on void * is illegal.
+		*ppdiskbno = (uint32_t*)diskaddr(f->f_indirect) + filebno;
 	}
 	return 0;
 }

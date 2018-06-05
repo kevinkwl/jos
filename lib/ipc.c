@@ -23,7 +23,7 @@ int32_t
 ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
 {
 	// LAB 4: Your code here.
-	void *dstva = pg ? pg : (void *)-1;
+	void *dstva = pg ? pg : (void *)UTOP;
 
 	int r;
 	if ((r = sys_ipc_recv(dstva)) < 0) {
@@ -55,7 +55,7 @@ void
 ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
 {
 	// LAB 4: Your code here.
-	void *srcva = pg ? pg : (void *)-1;
+	void *srcva = pg ? pg : (void *)UTOP;
 	int r;
 	while (1) {
 		r = sys_ipc_try_send(to_env, val, srcva, perm);

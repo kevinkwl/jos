@@ -63,13 +63,23 @@ duppage(envid_t envid, unsigned pn)
 
 	// LAB 4: Your code here.
 	uintptr_t addr = pn * PGSIZE;
-	if (uvpt[pn] & PTE_W || uvpt[pn] & PTE_COW) {
+	if (uvpt[pn] & PTE_SHARE) {
+		// TODO: if parent env is cow, then child cannot see the updates of parent env ??
+		if ((r = sys_page_map(0, (void *)addr, envid, (void *)addr, uvpt[pn] & PTE_SYSCALL)) < 0)
+			panic("map to child shared failed: %e", r);
+	} else if (uvpt[pn] & PTE_W || uvpt[pn] & PTE_COW) {
 		if ((r = sys_page_map(0, (void *)addr, envid, (void *)addr, PTE_COW|PTE_U|PTE_P)) < 0)
 			panic("map to child failed: %e", r);
+
+		// if the page is already COW, we still need to remap it with COW, why?
+		// because when we are mapping the stack pages, the previously sys_page_map call 
+		// could trigger a page fault on current env (push args to stack), therefore a new
+		// page will be mapped as writable but not COW, which clear the COW bit, causing 
+		// problems for future fork.
 		if ((r = sys_page_map(0, (void *)addr, 0, (void *)addr, PTE_COW|PTE_U|PTE_P)) < 0)
 			panic("remap to curenv COW failed: %e", r);
 	} else {
-		if ((r = sys_page_map(0, (void *)addr, 0, (void *)addr, PTE_U|PTE_P)) < 0)
+		if ((r = sys_page_map(0, (void *)addr, envid, (void *)addr, uvpt[pn] & PTE_SYSCALL)) < 0)
 			panic("map to child read-only failed: %e", r);
 	}
 	//panic("duppage not implemented");
